@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "SpeakerPCM.h"
+#include "Debounce.h"
 
 const int HUMID_RED_DO_PIN = 2;
 const int HUMID_GRN_DO_PIN = 4;
@@ -14,6 +15,7 @@ const int TEMP_AI_PIN = A1;
 
 SpeakerPCM speakerPCM(SPEAKER_DO_PIN);
 
+Debounce debouncedHumiditySwitch;
 unsigned int pressureFixPt6 = 0;  // current pressure with 6 bit fixed point
 unsigned int PRESSURE_FP6_MIN = 0;
 unsigned int PRESSURE_FP6_MAX = (256 << 6) - 1;
@@ -34,7 +36,7 @@ void setup() {
   pinMode(TEMP_METER_DO_PIN, OUTPUT);
   pinMode(HUMID_METER_DO_PIN, OUTPUT);
   
-  pinMode(HUMID_BUTTON_DI_PIN, INPUT);
+  pinMode(HUMID_BUTTON_DI_PIN, INPUT_PULLUP);
 
   humidityControlActivated = false;
   lastMillis = millis();
@@ -115,7 +117,9 @@ void updateHumidity(int elapsedMillis)
   static const int HUMIDITY_DRIFT_TIME_MAX = 1000; // ms
   static const int TIME_AT_MAX_BEFORE_ERROR = 3000; // ms
 
-  boolean newHumidityControlActivated = digitalRead(HUMID_BUTTON_DI_PIN);
+  boolean humiditySwitchState = digitalRead(HUMID_BUTTON_DI_PIN);
+  debouncedHumiditySwitch.update(humiditySwitchState, elapsedMillis);
+  boolean newHumidityControlActivated = debouncedHumiditySwitch.isPressed();
 
   switch (humidityError) {
     case OFF: {
