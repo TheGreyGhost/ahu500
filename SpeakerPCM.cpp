@@ -90,22 +90,22 @@ ISR(TIMER1_OVF_vect) {
   }
 }
 
-//ISR(TIMER1_CAPT_vect){
-//  // The first step is to disable this interrupt before manually enabling global interrupts.
-//  // This allows this interrupt vector (COMPB) to continue loading data while allowing the overflow interrupt
-//  // to interrupt it. ( Nested Interrupts )
-//
-// TIMSK1 &= ~_BV(ICIE1);
-//
-// //Now enable global interupts before this interrupt is finished, so the music can interrupt the buffering
-//  sei();
-//
+ISR(TIMER1_CAPT_vect){
+  // The first step is to disable this interrupt before manually enabling global interrupts.
+  // This allows this interrupt vector (COMPB) to continue loading data while allowing the overflow interrupt
+  // to interrupt it. ( Nested Interrupts )
+
+ TIMSK1 &= ~_BV(ICIE1);
+
+ //Now enable global interupts before this interrupt is finished, so the music can interrupt the buffering
+  sei();
+
 //  if (paused) { //if paused, disable overflow vector and leave this one enabled
 //    TIMSK1 = _BV(ICIE1); OCR1A = 10; TIMSK1 &= ~_BV(TOIE1); 
 //  }   else if (playing) { //re-enable this interrupt vector and the overflow vector
-//    TIMSK1 = ( _BV(ICIE1) | _BV(TOIE1) );
+    TIMSK1 = ( _BV(ICIE1) | _BV(TOIE1) );
 //  }
-//
-//}
+
+}
 
 
