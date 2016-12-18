@@ -21,7 +21,7 @@ unsigned int pressureFixPt6 = 0;  // current pressure with 6 bit fixed point
 unsigned int PRESSURE_FP6_MIN = 0;
 unsigned int PRESSURE_FP6_MAX = (256 << 6) - 1;
 
-int temperature;
+float temperature = random(80, 160);  // no particular significance to these numbers;
 int humidity = random(80, 127);  // no particular significance to these numbers
 boolean humidityControlActivated;
 enum HumidityError {OFF, STABILISING, ERROR_DELAY, ACTIVE_ERROR};
@@ -79,30 +79,97 @@ void loop(void) {
   unsigned int targetPressure = analogRead(PRESS_SETPT_AI_PIN);
 //  pressureFixPt6 = targetPressure << 4;
 
-  updateTemperatureMeter();
   unsigned int displayPressure = updatePressure(targetPressure, timeElapsedMillis);
   unsigned int displayHumidity = updateHumidity(timeElapsedMillis);
-
+  unsigned int displayTemp = updateTemperature(timeElapsedMillis);
 //  
   updateAudioPlayback(humidityError, displayPressure);
 //
   analogWrite(PRESS_METER_DO_PIN, displayPressure);
   analogWrite(HUMID_METER_DO_PIN, displayHumidity);
+  analogWrite(TEMP_METER_DO_PIN, displayTemp);  
   writeHumidityControlLEDS(humidityError, timeElapsedMillis);
 }
 
-void updateTemperatureMeter()
-{
-    // our meter range is 12 C to 28 C
-  const int TEMP_METER_MIN_RAW = 0;  // 12 C
-  const int TEMP_METER_MAX_RAW = 1024;  // 28 C
-  const int TEMP_METER_MIN_OUT = 0;
-  const int TEMP_METER_MAX_OUT = 255;
+boolean smoothedTempInitialised = false;
+float smoothedTemp;
+const float SMOOTHING_MULTIPLIER = 0.001;  // arbitrary units, just fiddle until it's right
 
-  int tempRaw = analogRead(TEMP_AI_PIN);
-  tempRaw = constrain(tempRaw, TEMP_METER_MIN_RAW, TEMP_METER_MAX_RAW);
-  int tempOut = TEMP_METER_MIN_OUT + (TEMP_METER_MAX_OUT - TEMP_METER_MIN_OUT) * (tempRaw - TEMP_METER_MIN_RAW) / (TEMP_METER_MAX_RAW - TEMP_METER_MIN_RAW);
-//  analogWrite(TEMP_METER_DO_PIN, tempOut);  
+//// doesn't work ADC too inaccurate!
+//void updateTemperatureMeterOLD()
+//{
+//    // our meter range is 12 C to 28 C
+//  const float TEMP_METER_MIN_C = 12.5;
+//  const float TEMP_METER_MAX_C = 27.5;
+//  const int TEMP_METER_MIN_OUT = 0;
+//  const int TEMP_METER_MAX_OUT = 255;
+//
+//  const float VREF = 5000.0; // mV full range
+//  const int NUMBER_OF_BITS = 1024;
+//  const float MV_PER_C = 10.0;
+//  const float DEGREES_OFFSET = 0;
+//
+//  int tempRaw = analogRead(TEMP_AI_PIN);
+//  float sensorVoltage = tempRaw * VREF / NUMBER_OF_BITS;
+//  float degC = sensorVoltage / MV_PER_C + DEGREES_OFFSET;
+//  degC = constrain(degC, TEMP_METER_MIN_C, TEMP_METER_MAX_C);  
+//
+//  float tempOut = TEMP_METER_MIN_OUT + (TEMP_METER_MAX_OUT - TEMP_METER_MIN_OUT) * (degC - TEMP_METER_MIN_C) / (TEMP_METER_MAX_C - TEMP_METER_MIN_C);
+//  if (!smoothedTempInitialised) {
+//    smoothedTempInitialised = true;
+//    smoothedTemp = tempOut;
+//  }
+//  smoothedTemp = (1- SMOOTHING_MULTIPLIER) * smoothedTemp + SMOOTHING_MULTIPLIER * tempOut;
+//  analogWrite(TEMP_METER_DO_PIN, (int)smoothedTemp);  
+//}
+
+long tempRandomWalkTarget;
+long tempRandomWalkStart;
+long tempRandomWalkTime;
+long tempRandomWalkTimeLeft = 0;
+
+unsigned int updateTemperature(int elapsedMillis)
+{
+  static const long TEMP_DRIFT_MIN = 70;
+  static const long TEMP_DRIFT_MAX = 140;
+  static const long TEMP_DRIFT_DELTA = 30;
+  static const long TEMP_DRIFT_TIME_MIN = 2000; // ms
+  static const long TEMP_DRIFT_TIME_MAX = 4000; // ms
+  tempRandomWalkTimeLeft -= elapsedMillis;
+  if (tempRandomWalkTimeLeft < 0) {
+    tempRandomWalkStart = temperature;
+    int delta = random(TEMP_DRIFT_DELTA / 4, +TEMP_DRIFT_DELTA + 1);
+    if (random(2) == 0) {
+      delta = -delta;
+    }
+    tempRandomWalkTarget = temperature + delta;
+    if (tempRandomWalkTarget < TEMP_DRIFT_MIN || tempRandomWalkTarget > TEMP_DRIFT_MAX) {  // if we've hit the edge, go back to the middle
+      tempRandomWalkTarget = (TEMP_DRIFT_MIN + TEMP_DRIFT_MAX) / 2;  
+      tempRandomWalkTimeLeft = TEMP_DRIFT_TIME_MAX;
+    } else {
+      tempRandomWalkTimeLeft = random(TEMP_DRIFT_TIME_MIN, TEMP_DRIFT_TIME_MAX + 1);
+    }  
+    tempRandomWalkTime = tempRandomWalkTimeLeft;
+//    Serial.println();
+//    Serial.println(tempRandomWalkStart);
+//    Serial.println(tempRandomWalkTarget);
+//    Serial.println(delta);
+//    Serial.println(tempRandomWalkTimeLeft);
+  }  
+
+//  static int outputDelay;
+//  outputDelay -=elapsedMillis;
+//  if (outputDelay <= 0) {
+//    outputDelay = 200;
+//    Serial.println(temperature);
+//  }
+  temperature = tempRandomWalkTarget + (tempRandomWalkTimeLeft * (tempRandomWalkStart - tempRandomWalkTarget)) / tempRandomWalkTime;
+//  if (outputDelay <= 0) {
+//    outputDelay = 200;
+//    Serial.println(tempRandomWalkTimeLeft);
+//    Serial.println(temperature);
+//  }
+  return (unsigned int)temperature;
 }
 
 long humidityRandomWalkTarget;
@@ -115,7 +182,7 @@ int updateHumidity(int elapsedMillis)
 {
   static const long HUMIDITY_MIN = 0;
   static const long HUMIDITY_MAX = 255; 
-  static const long HUMIDITY_DRIFT_MAX = 160;
+  static const long HUMIDITY_DRIFT_MAX = 200;
   static const long HUMIDITY_DRIFT_DELTA = 70;
   static const long HUMIDITY_DRIFT_TIME_MIN = 500; // ms
   static const long HUMIDITY_DRIFT_TIME_MAX = 2000; // ms
@@ -148,7 +215,7 @@ int updateHumidity(int elapsedMillis)
         }
         humidityRandomWalkTarget = humidity + delta;
         if (humidityRandomWalkTarget < HUMIDITY_MIN || humidityRandomWalkTarget > HUMIDITY_DRIFT_MAX) {  // if we've hit the edge, go back to the middle
-          humidityRandomWalkTarget = (HUMIDITY_MIN, HUMIDITY_DRIFT_MAX) / 2;  
+          humidityRandomWalkTarget = (HUMIDITY_MIN + HUMIDITY_DRIFT_MAX) / 2;  
         }
         humidityRandomWalkTimeLeft = random(HUMIDITY_DRIFT_TIME_MIN, HUMIDITY_DRIFT_TIME_MAX + 1);
         humidityRandomWalkTime = humidityRandomWalkTimeLeft;
